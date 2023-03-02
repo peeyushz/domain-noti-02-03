@@ -10,6 +10,7 @@ const { sendWhatsapp } = require("../alerts/sendWhatsapp");
 
 cron.schedule("* * * * *", async () => {
     try {
+        console.log("checking");
         const epochTime = Math.floor(new Date().getTime() / 1000);
         const details = await planPurchaseModel.aggregate([
             {
@@ -67,6 +68,7 @@ cron.schedule("* * * * *", async () => {
             },
         ]);
         details.map(async (item) => {
+            console.log("checking 1", details.length);
         ensContract.options.address = "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85";
         const expiryDate = await ensContract.methods.nameExpires(item.domains.labelHash).call();
         if (expiryDate > item.domains.expiryDate) {
@@ -76,6 +78,7 @@ cron.schedule("* * * * *", async () => {
                 );
             } else {
                 item.domains.alerts.forEach(async (alert) => {
+                    console.log("checking 12", item.domains.domain);
                     if (alert == "sms" && epochTime === item.domains.alertTime) {
                         // sendSMS(item.countryCode+item.mobile.toString());?
                         await domainModel.findOneAndUpdate(
