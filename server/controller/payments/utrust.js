@@ -168,6 +168,7 @@ exports.createUtrustPayment = async (req, res) => {
 
 exports.paymentUpdate = async (req, res) => {
     try {
+        console.log("Webhook recieved");
         const data = req.body;
         const joined_payload = "event_type" + data.event_type + "resourceamount" + data.resource.amount + "resourcecurrency" + data.resource.currency + "resourcereference" + data.resource.reference + "state" + data.state + ""
         const payloadSignature = data.signature;
