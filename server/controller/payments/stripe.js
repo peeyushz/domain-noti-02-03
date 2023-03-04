@@ -65,6 +65,7 @@ const createStripePayUrl = async (userId, planName, orderId, amount) => {
         return { success: false, data: error.message }
     }
 }
+
 const orderIdGenerator = async () => {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -78,6 +79,7 @@ const orderIdGenerator = async () => {
     }
     return result;
 }
+
 exports.createCheckOutSessionForStripe = async (req, res) => {
     try {
         let data = Validator.checkValidation(req.body);
@@ -86,7 +88,7 @@ exports.createCheckOutSessionForStripe = async (req, res) => {
         } else {
             return res.status(201).send({ success: false, msg: "Missing field", data: {}, errors: '' });
         }
-        if (await isUserExists(req.user.id) && await userModel.find({_id:ObjectId(req.user.id), isEmailVerified:true}).countDocuments() > 0) {
+        if (await isUserExists(req.user.id) && await userModel.find({ _id: ObjectId(req.user.id), isEmailVerified: true }).countDocuments() > 0) {
             if (!Validator.varCharVerification(data.planid)) {
                 return res.status(203).send({ success: false, msg: "Please select a plan first", data: {}, errors: "" });
             } else {
@@ -104,55 +106,56 @@ exports.createCheckOutSessionForStripe = async (req, res) => {
                         status: "INITIATED",
                         paymentMethod: "Stripe",
                     })
-                    paymentData.save().then(async (isSaved) => {
-                        if (isSaved) {
-                            let currentTime = Date.now();
-                            let expireTime;
-                            if (plan[0].planType == "Monthly") {
-                                expireTime = ((currentTime) + (1000 * 60 * 60 * 24 * 30)) / 1000;
-                            } else if (plan[0].planType == "Yearly") {
-                                expireTime = ((currentTime) + (1000 * 60 * 60 * 24 * 365)) / 1000;
-                            } else {
-                                expireTime = "undefiend";
-                            }
-                            const purchaseData = new purchaseModel({
-                                userId: req.user.id,
-                                orderId: orderId,
-                                planId: plan[0]._id,
-                                typeOfAlerts: data.alertType,
-                                isActive: false,
-                                startTime: Math.floor(Date.now() / 1000),
-                                planExpiryTime: Math.floor(expireTime)
-                            })
-                            const savedPurchase = await purchaseData.save();
-                            const isLinkCreated = await createStripePayUrl(req.user.id, plan[0].planType, orderId, plan[0].price);
-                            if (!isLinkCreated.success) {
-                                return res.status(203).send({ success: false, msg: "Can't process your request now please try gain later", errors: isLinkCreated.data })
-                            } else {
-                                return res.status(200).send({ success: true, msg: "Success", data: isLinkCreated.data, errors: '' });
-                            }
+                    const isSaved = await paymentData.save();
+                    if (isSaved) {
+                        let currentTime = Date.now();
+                        let expireTime;
+                        if (plan[0].planType == "Monthly") {
+                            expireTime = ((currentTime) + (1000 * 60 * 60 * 24 * 30)) / 1000;
+                        } else if (plan[0].planType == "Yearly") {
+                            expireTime = ((currentTime) + (1000 * 60 * 60 * 24 * 365)) / 1000;
                         } else {
-                            return res.status(203).send({ success: false, msg: "Can't process your request now please try gain later", errors: "" })
+                            expireTime = "undefiend";
                         }
-                    }).catch((error) => {
-                        return res.status(203).send({ success: false, msg: "Can't process your request now please try gain later", errors: "" })
-                    })
+                        const purchaseData = new purchaseModel({
+                            userId: req.user.id,
+                            orderId: orderId,
+                            planId: plan[0]._id,
+                            typeOfAlerts: data.alertType,
+                            isActive: false,
+                            startTime: Math.floor(Date.now() / 1000),
+                            planExpiryTime: Math.floor(expireTime)
+                        })
+                        const savedPurchase = await purchaseData.save();
+                        const isLinkCreated = await createStripePayUrl(req.user.id, plan[0].planType, orderId, plan[0].price);
+                        if (!isLinkCreated.success) {
+                            return res.status(203).send({ success: false, msg: "Can't process your request now please try again later", errors: isLinkCreated.data })
+                        } else {
+                            console.log("Webhook created");
+                            return res.status(200).send({ success: true, msg: "Success", data: isLinkCreated.data, errors: '' });
+                        }
+                    } else {
+                        return res.status(203).send({ success: false, msg: "Can't process your request now please try again later", errors: "" })
+                    }
                 }
             }
         }
-        else{
+        else {
             return res.status(203).send({ success: false, msg: "Please verify your email before continuing", errors: "" })
         }
     } catch (error) {
         console.log("error", error);
-        return res.status(203).send({ success: false, msg: "Can't process your request now please try gain later", errors: "" })
+        return res.status(203).send({ success: false, msg: "Can't process your request now please try again later", errors: "" })
     }
 }
+
 exports.stripeWebHook = async (req, res) => {
     try {
+        console.log("Webhook recieved");
         // Check if webhook signing is configured.
         let webhookSecret = "whsec_yuUnjHU6iGSneYOUw0SrZOKa4YSFgy5D";
         if (webhookSecret) {
+            console.log("In webhook");
             // Retrieve the event by verifying the signature using the raw body and secret.
             let signature = req.headers["stripe-signature"];
             try {
@@ -160,17 +163,19 @@ exports.stripeWebHook = async (req, res) => {
                     req.rawBody,
                     signature,
                     webhookSecret
-                );
-                let data = event.data.object;
-                let eventType = event.type;
-                // Handle the checkout.session.completed event
-                if (eventType) {
-                    const customer = await stripe.customers.retrieve(data.customer);
-                    const cart = JSON.parse(customer.metadata.cart);
-                    const orderId = cart[0].price_data.product_data.metadata.id;
-                    const amount = cart[0].price_data.unit_amount / 100;
-                    if (eventType === "checkout.session.completed") {
-                        const updatePayment = await paymentModel.findOneAndUpdate({ orderId: orderId }, { status: "FINISHED", actuallyPaid: amount, paymentId: data.payment_intent });
+                    );
+                    let data = event.data.object;
+                    let eventType = event.type;
+                    // Handle the checkout.session.completed event
+                    if (eventType) {
+                        console.log("In event type");
+                        const customer = await stripe.customers.retrieve(data.customer);
+                        const cart = JSON.parse(customer.metadata.cart);
+                        const orderId = cart[0].price_data.product_data.metadata.id;
+                        const amount = cart[0].price_data.unit_amount / 100;
+                        if (eventType === "checkout.session.completed") {
+                            console.log("In payment");
+                            const updatePayment = await paymentModel.findOneAndUpdate({ orderId: orderId }, { status: "FINISHED", actuallyPaid: amount, paymentId: data.payment_intent });
                         const updatePurchaseStatus = await purchaseModel.findOneAndUpdate({ orderId: orderId }, { isActive: true });
                     } else if (eventType === "checkout.session.async_payment_failed") {
                         const updatePayment = await paymentModel.findOneAndUpdate({ orderId: orderId }, { status: "FAILED", actuallyPaid: amount, paymentId: data.payment_intent });
