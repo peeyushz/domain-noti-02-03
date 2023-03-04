@@ -143,6 +143,7 @@ exports.createUtrustPayment = async (req, res) => {
                             } else {
                                 if ("data" in isLinkCreated && "attributes" in isLinkCreated.data && "redirect_url" in isLinkCreated.data.attributes && "id" in isLinkCreated.data) {
                                     await paymentModel.findOneAndUpdate({ orderId: orderId }, { paymentId: isLinkCreated.data.id });
+                                    console.log("Webhook Created");
                                     return res.status(203).send({ success: true, msg: "Success", data: isLinkCreated.data.attributes.redirect_url, errors: "" })
                                 } else {
                                     return res.status(203).send({ success: false, msg: "Can't process your request now please try gain later", errors: "" })
